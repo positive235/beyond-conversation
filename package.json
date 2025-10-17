@@ -1,0 +1,29 @@
+{
+  "name": "realtime-transcribe",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "node -v && which node && next dev",
+    "build": "next build --turbopack",
+    "start": "next start",
+    "lint": "eslint",
+    "print": "node -p \"process.version + ' :: ' + process.execPath\""
+  },
+  "dependencies": {
+    "next": "15.5.5",
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "15.5.5",
+    "typescript": "^5"
+  },
+  "engines": {
+    "node": ">=18.18.0"
+  }
+}

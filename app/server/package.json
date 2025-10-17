@@ -1,0 +1,13 @@
+{
+    "name": "server",
+    "private": true,
+    "type": "module",
+    "scripts": {
+      "start": "node index.js"
+    },
+    "dependencies": {
+      "dotenv": "16.4.5",
+      "ws": "8.17.0"
+    }
+  }
+  
