@@ -90,8 +90,12 @@ WSS.on('connection', async (client) => {
             response: {
               modalities: ['text'],
               conversation: null, // Keep each flush isolated
-              instructions: 'Transcribe the latest audio only as plain text.'
-            }
+              temperature: 0,
+              instructions: 
+                'Return ONLY a verbatim transcript of the most recently committed audio. ' +
+                'Do NOT translate, paraphrase, summarize, or add commentary. ' +
+                'Keep the original spoken language; output plain text only.',
+            },
           }));
           // Reset counter after asking for a response
           approxB64SinceCommit = 0;
