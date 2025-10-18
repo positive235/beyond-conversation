@@ -19,9 +19,9 @@ const OPENAI_URL = `wss://api.openai.com/v1/realtime?model=${encodeURIComponent(
 const WSS = new WebSocketServer({ port: PORT });
 console.log(`[server] ws listening on :${PORT}`);
 
-// track buffered audio and response lifecycle
-let approxB64SinceCommit = 0;     // how much audio we've appended since last commit
-let activeResponse = false;       // whether a response is currently running
+// Track buffered audio and response lifecycle
+let approxB64SinceCommit = 0;     // How much audio we've appended since last commit
+let activeResponse = false;       // Whether a response is currently running
 const MIN_B64_FOR_100MS = 6400;   // ≈ (2400 samples * 2 bytes) * 4/3 base64 expansion
 
 WSS.on('connection', async (client) => {
@@ -54,12 +54,6 @@ WSS.on('connection', async (client) => {
     try {
       const msg = JSON.parse(raw.toString());
 
-      // Log what the browser and OpenAI send
-      if (msg.type === 'client.audio.append') {
-        console.log('[server] append bytes(b64)=', msg.audio?.length ?? 0);
-      }
-      if (msg.type === 'client.flush') console.log('[server] flush');  
-
       if (msg.type === 'config' && msg.language) {
         language = msg.language;
         const upd = { 
@@ -74,12 +68,17 @@ WSS.on('connection', async (client) => {
       }
       if (msg.type === 'client.audio.append' && typeof msg.audio === 'string') {
         approxB64SinceCommit += msg.audio.length;
+        
+        console.log('[server] append b64 len =', msg.audio.length);
+
         openai.send(JSON.stringify({ type: 'input_audio_buffer.append', audio: msg.audio }));
         return;
       }
       if (msg.type === 'client.flush') {
+        console.log('[server] FLUSH: approxB64SinceCommit = ', approxB64SinceCommit, 'activeResponse =', activeResponse);  
+
         if (approxB64SinceCommit < MIN_B64_FOR_100MS) {
-          // not enough audio yet - skip committing to avoid 'buffer too small'
+          // Not enough audio yet - skip committing to avoid 'buffer too small'
           return;
         }
         openai.send(JSON.stringify({ type: 'input_audio_buffer.commit' }));
@@ -90,11 +89,11 @@ WSS.on('connection', async (client) => {
             type:'response.create',
             response: {
               modalities: ['text'],
-              conversation: null, // keep each flush isolated
+              conversation: null, // Keep each flush isolated
               instructions: 'Transcribe the latest audio only as plain text.'
             }
           }));
-          // reset counter after asking for a response
+          // Reset counter after asking for a response
           approxB64SinceCommit = 0;
         }
         return;
@@ -117,21 +116,24 @@ WSS.on('connection', async (client) => {
         try {
           m = JSON.parse(line);
         } catch {
-          // ignore non-JSON line
+          // Ignore non-JSON line
           break;
         }
         
-        // when OpenAI starts a response
+        console.log('[server] OpenAI event type =', m.type);
+
+        // When OpenAI starts a response
         if (m.type === 'response.created') {
           activeResponse = true;
+          console.log('[server] response.created');
         }
 
         if (m.type === 'response.done') {
           activeResponse = false;
-          return;
+          console.log('[server] response.done');
         }
 
-        // handle content_part events carrying text/transcript
+        // Handle content_part events carrying text/transcript
         if (m.type === 'response.content_part.added') {
           const p = m.part || {};
           const t =
@@ -139,7 +141,7 @@ WSS.on('connection', async (client) => {
             typeof p.content === 'string' ? p.content :
             typeof p.transcript === 'string' ? p.transcript : '';
           if (t) client.send(JSON.stringify({ type: 'transcript', channel: 'interim', text: String(t) }));
-          // do not return; later events (delta/done) may still arrive
+          // Do not return; later events (delta/done) may still arrive
         }
 
         if (m.type === 'response.content_part.done') {
@@ -152,7 +154,7 @@ WSS.on('connection', async (client) => {
           return;
         }
 
-        // surface error payloads to console (helps debugging)
+        // Surface error payloads to console (helps debugging)
         if (m.type === 'error' || m.type === 'response.error') {
           console.error('[server] OpenAI error payload:', m);
           return;
@@ -161,11 +163,18 @@ WSS.on('connection', async (client) => {
         // 1) Audio transcript events
         if (m.type === 'response.audio_transcript.delta') {
           const t = String(m.delta || '');
-          if (t) client.send(JSON.stringify({ type: 'transcript', channel: 'interim', text: t }));
+          if (t) {
+            console.log('[server] ->client INTERIM:', t);
+
+            client.send(JSON.stringify({ type: 'transcript', channel: 'interim', text: t }));
+          }
           
         } else if (m.type === 'response.audio_transcript.done') {
           const t = String(m.text || '').trim();
-          if (t) client.send(JSON.stringify({ type: 'transcript', channel: 'final', text: t }));
+          if (t) {
+            console.log('[server] ->client FINAL:', t);
+            client.send(JSON.stringify({ type: 'transcript', channel: 'final', text: t }));
+          }
         }
 
         // 2) Text variants

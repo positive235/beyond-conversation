@@ -156,10 +156,14 @@
    const lastPingRef = useRef<number | null>(null);
    const sampleRateRef = useRef<number>(48000);
 
-   // client-side sample accumulator (24 kHz mono)
-  const pendingSamplesRef = useRef<Float32Array | null>(null);
-  const THRESHOLD_SAMPLES_24K = 2400; // ≈100ms at 24kHz
- 
+   // Client-side sample accumulator (24 kHz mono)
+   const pendingSamplesRef = useRef<Float32Array | null>(null);
+   const THRESHOLD_SAMPLES_24K = 2400; // ≈100ms at 24kHz
+  
+   // Accumulate raw mic samples at source rate (e.g., 48kHz)
+   const pendingF32Ref = useRef<Float32Array | null>(null);
+   const lastSentAtRef = useRef<number>(0);
+
    const WS_URL: string = (() => {
      const envUrl =
        (typeof process !== 'undefined' &&
@@ -290,7 +294,38 @@
          ws.send(JSON.stringify({ type: 'ping', t: lastPingRef.current }));
        };
   
-       ws.onmessage = (ev: MessageEvent) => { /* ...unchanged... */ };
+       ws.onmessage = (ev: MessageEvent) => {
+         try {
+           const msg = JSON.parse(ev.data as string);
+           console.log('[client] ws msg:', msg);
+
+           if (msg.type === 'transcript') {
+             if (msg.channel === 'interim') {
+               console.log('[client] INTERIM: ', msg.text);
+               setInterim(String(msg.text || ''));
+             }
+             if (msg.channel === 'final') {
+               console.log('[client] FINAL:', msg.text);
+               const text = String(msg.text || '').trim();
+               if (text) {
+                 setFinals((prev) => [...prev, text]);
+                 setLines((prev) => [...prev, {id: `${Date.now()}-${prev.length + 1}`, text, ts: Date.now() }]);
+               }
+               _setInterim('');
+             }
+             return;
+           }
+
+           if (msg.type === 'status') {
+             console.log('[client] WS status:', msg.value);
+             setStatus(String(msg.value || 'connected') as any);
+             return;
+           }
+         } catch {
+           console.log('[client] ws raw:', ev.data);
+           setInterim(String(ev.data || ''));
+         }
+       };
   
        ws.onclose = (ev) => {
          console.warn('[WS] closed', url, ev.code, ev.reason);
@@ -348,37 +383,60 @@
        node.port.onmessage = (e: MessageEvent) => {
          if (e.data?.type !== 'samples') return;
          const f32: Float32Array = e.data.buffer;
-         const down = downsampleTo24kHz(f32, sampleRateRef.current);
          
-         // append to pending
-         const prev = pendingSamplesRef.current;
-         if (prev && prev.length > 0) {
-           const merged = new Float32Array(prev.length + down.length);
+         // Accumulate at source rate for better chunk size
+         const prev = pendingF32Ref.current;
+         if (prev && prev.length) {
+           const merged = new Float32Array(prev.length + f32.length);
            merged.set(prev, 0);
-           merged.set(down, prev.length);
-           pendingSamplesRef.current = merged;
+           merged.set(f32, prev.length);
+           pendingF32Ref.current = merged;
          } else {
-           pendingSamplesRef.current = down;
+           pendingF32Ref.current = f32.slice();
          }
 
-         // if we have >=100ms, flush one chunk
-         const buf = pendingSamplesRef.current!;
-         if (buf.length >= THRESHOLD_SAMPLES_24K) {
-           const i16 = floatToPCM16(down);
+         // Send when we have ~200ms worth of samples at the source rate
+         const MIN_CHUNK_SAMPLES = Math.round((sampleRateRef.current || 48000) * 0.2); // ~200ms
+         if ((pendingF32Ref.current?.length || 0) >= MIN_CHUNK_SAMPLES) {
+           const chunk = pendingF32Ref.current!;
+           pendingF32Ref.current = null;
+
+           // Convert directly at source rate (no downsample) -> PCM16
+           const i16 = floatToPCM16(chunk);
            const b64 = base64FromPCM16(i16);
+           
+           console.log('[client] sending chunk b64 len =', b64.length);
+           
            wsRef.current?.send(JSON.stringify({ type: 'client.audio.append', audio: b64 }));
-           pendingSamplesRef.current = null;
+           lastSentAtRef.current = performance.now();
          }
        };
        const source = ctx.createMediaStreamSource(streamRef.current as MediaStream);
        source.connect(node);
        node.connect(ctx.destination);
      }
- 
+     
+     const drainPending = () => {
+       const buf = pendingF32Ref.current;
+       if (buf && buf.length) {
+         pendingF32Ref.current = null;
+         const i16 = floatToPCM16(buf);
+         const b64 = base64FromPCM16(i16);
+         wsRef.current?.send(JSON.stringify({ type: 'client.audio.append', audio: b64 }));
+         lastSentAtRef.current = performance.now();
+       }
+     };
+
      // Live flush every ~1.2s so you get interim/final text while speaking
      if (flushTimerRef.current) window.clearInterval(flushTimerRef.current);
      flushTimerRef.current = window.setInterval(() => {
-       try { wsRef.current?.send(JSON.stringify({ type: 'client.flush' })); } catch {}
+       try { 
+         drainPending(); // Push any leftover audio before committing
+         
+         console.log('[client] FLUSH tick');
+         
+         wsRef.current?.send(JSON.stringify({ type: 'client.flush' })); 
+        } catch {}
      }, 1200);
  
      setRecording(true);
@@ -394,6 +452,17 @@
      audioCtxRef.current = null;
      setRecording(false);
      _setInterim('');
+
+     try {
+       // Final drain of pending audio so commit isn't empty
+       const buf = pendingF32Ref.current;
+       if (buf && buf.length) {
+         pendingF32Ref.current = null;
+         const i16 = floatToPCM16(buf);
+         const b64 = base64FromPCM16(i16);
+         wsRef.current?.send(JSON.stringify({ type: 'client.audio.append', audio: b64 }));
+       }
+     } catch {}
      // Final flush so last chunk is transcribed
      try { wsRef.current?.send(JSON.stringify({ type: 'client.flush' })); } catch {}
    }
@@ -477,6 +546,9 @@
            <button onClick={stop} style={{ padding: '8px 12px' }}>Stop</button>
          )}
          <button onClick={resetTranscript} style={{ padding: '8px 12px' }}>Reset</button>
+         
+         {console.log('[client] SAVE fullText length =', fullText.length, 'text =', fullText.slice(0, 120), '...')}
+         
          <button onClick={() => downloadText(`transcript-${Date.now()}.txt`, fullText)} style={{ padding: '8px 12px' }}>Save .txt (all)</button>
          <button onClick={runTests} style={{ padding: '8px 12px' }}>Run tests</button>
        </div>
