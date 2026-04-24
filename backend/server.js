@@ -19,7 +19,7 @@ wss.on("connection", (clientWs) => {
     console.log("[server] frontend connected");
 
     const openaiWs = new WebSocket(
-        "wss://api.openai.com/v1/realtime?model=gpt-realtime",
+        "wss://api.openai.com/v1/realtime?intent=transcription",
         {
             headers: {
                 Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
