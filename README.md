@@ -12,6 +12,9 @@ Real-time Speech-to-Text Web App powered by OpenAI
 
 
 ### Capturing YouTube / Tab Audio
+<img width="727" height="702" alt="image" src="https://github.com/user-attachments/assets/caa5087d-b550-4390-b19f-22ce68f87a9b" />
+
+<img width="727" height="760" alt="image" src="https://github.com/user-attachments/assets/f42712a8-5bc2-415f-aa15-ebfe07cf704e" />
 
 
 ## Author
