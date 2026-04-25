@@ -1,12 +1,13 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { startTransition, useRef, useState } from "react";
 
 export default function Home() {
   const [isRecording, setIsRecording] = useState(false);
   const [transcript, setTranscript] = useState("");
   const [status, setStatus] = useState("Not connected");
-
+  const [source, setSource] = useState<"mic" | "tab" | null>(null);
+  const [showPermissionModal, setShowPermissionModal] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -22,7 +23,7 @@ export default function Home() {
     return btoa(binary);
   };
 
-  const startRecording = async () => {
+  const startTranscriptionFromStream = async (stream: MediaStream) => {
     setTranscript("");
     setStatus("Connecting...");
 
@@ -30,14 +31,9 @@ export default function Home() {
     wsRef.current = ws;
 
     ws.onopen = async () => {
-      setStatus("Connected. Requesting microphone...");
-
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: true
-      });
-
+      setStatus("Connected. Preparing audio...")
       streamRef.current = stream;
-
+      
       const audioContext = new AudioContext({
         sampleRate: 24000
       });
@@ -112,6 +108,40 @@ export default function Home() {
 
     setIsRecording(false);
     setStatus("Stopped");
+    setSource(null);
+  };
+
+  const startTabTranscription  = async () => {
+    setSource("tab");
+
+    const displayStream = await navigator.mediaDevices.getDisplayMedia({
+      video: true,
+      audio: {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+      },
+    });
+
+    const audioTrack = displayStream.getAudioTracks()[0];
+
+    if (!audioTrack) {
+      alert("No audio found. Please select a browser tab and enable 'Share tab audio'.");
+      return;
+    }
+
+    const audioOnlyStream = new MediaStream([audioTrack]);
+
+    await startTranscriptionFromStream(audioOnlyStream);
+  };
+
+  const startMicTranscription = async ()  => {
+    setSource("mic");
+    const micStream = await navigator.mediaDevices.getUserMedia({
+      audio: true,
+    });
+
+    await startTranscriptionFromStream(micStream);
   };
 
   return (
@@ -124,37 +154,96 @@ export default function Home() {
         <p className="text-gray-400 mb-6">
           Real-Time Speech-to-Text Powered by OpenAI
         </p>
-
         <div className="mb-4 rounded-lg bg-gray-800 p-4">
           <p className="text-sm text-gray-400">Status</p>
           <p className="text-lg">{status}</p>
         </div>
 
         <div className="mb-6 rounded-lg bg-gray-800 p-4 min-h-40">
-          <p className="text-sm text-gray-400 mb-2">Transcript</p>
-          <p className="whitespace-pre-wrap leading-7">
-            {transcript || "Your speech will appear here..."}
+          <p className="text-sm text-gray-400 mb-2">Live Transcript</p>
+          <p className="whitespace-pre-wrap leading-7 text-gray-100">
+            {transcript || "Start speaking or play audio to see the transcript here."}
+            {isRecording && transcript &&(
+              <span className="ml-1 animate-pulse text-gray-400">|</span>
+            )}
           </p>
         </div>
 
-        <div className="flex gap-4">
+        <div className="flex gap-4 justify-center">
           {!isRecording ? (
-            <button
-              onClick={startRecording}
-              className="rounded-lg bg-blue-600 px-5 py-3 font-semibold hover:bg-blue-500"
-            >
-              Start Recording
-            </button>
-          ) : (
-            <button
+            <>
+              <button 
+                onClick={() => {
+                  setSource("mic");
+                  setShowPermissionModal(true);
+                }}
+                className="p-4 border border-gray-800 rounded-md hover:bg-gray-800"
+              >
+                Use Microphone
+              </button>
+              <button 
+                onClick={() => {
+                  setSource("tab");
+                  setShowPermissionModal(true);
+                }}
+                className="p-4 border border-gray-800 rounded-md hover:bg-gray-800"
+              >
+                Capture YouTube / Tab Audio
+              </button>
+            </>
+            ):(
+            <button 
               onClick={stopRecording}
-              className="rounded-lg bg-red-600 px-5 py-3 font-semibold hover:bg-red-500"
+              className="p-4 border border-gray-800 rounded-md hover:bg-gray-800"
             >
-              Stop Recording
+              Stop Transcribing
             </button>
           )}
         </div>
+        <div className="mb-4 text-sm">
+          {isRecording && source === "mic" && (
+            <p className="text-red-400">🔴 Recording from microphone...</p>
+          )}
+          {isRecording && source === "tab" && (
+            <p className="text-red-400">🔴 Capturing tab audio...</p>
+          )}
+        </div>
       </div>
+      {showPermissionModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center">
+          <div className="bg-gray-900 p-6 rounded-xl w-[320px]">
+            <h3 className="text-lg font-semibold mb-2">
+              {source === "mic" ? "Use Microphone" : "Capture YouTube / Tab Audio"}
+            </h3>
+
+            <p className="text-sm text-gray-400 mb-4">
+              {source === "mic"
+                ? "We’ll use your microphone to transcribe speech in real time."
+                : "Select a tab and turn on 'Share tab audio' to transcribe audio."}
+            </p>
+
+            <div className="flex justify-end gap-2">
+              <button 
+                onClick={() => setShowPermissionModal(false)}
+                className="p-2 border border-gray-800 rounded-md hover:bg-gray-800"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setShowPermissionModal(false);
+                  source === "mic"
+                    ? startMicTranscription()
+                    : startTabTranscription();
+                }}
+                className="p-2 border border-gray-800 rounded-md hover:bg-gray-800"
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
