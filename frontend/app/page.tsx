@@ -1,6 +1,6 @@
 "use client";
 
-import { startTransition, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export default function Home() {
   const [isRecording, setIsRecording] = useState(false);
@@ -8,6 +8,10 @@ export default function Home() {
   const [status, setStatus] = useState("Not connected");
   const [source, setSource] = useState<"mic" | "tab" | null>(null);
   const [showPermissionModal, setShowPermissionModal] = useState(false);
+  const [summary, setSummary] = useState("");
+
+  const lastSummarizedRef = useRef("");
+  const transcriptRef = useRef("");
   const wsRef = useRef<WebSocket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -25,6 +29,8 @@ export default function Home() {
 
   const startTranscriptionFromStream = async (stream: MediaStream) => {
     setTranscript("");
+    setSummary("");
+    lastSummarizedRef.current = "";
     setStatus("Connecting...");
 
     const ws = new WebSocket(process.env.NEXT_PUBLIC_WS_URL!);
@@ -144,6 +150,41 @@ export default function Home() {
     await startTranscriptionFromStream(micStream);
   };
 
+  const summarizeTranscript = async (currentTranscript: string) => {
+    if (currentTranscript.length < 200) return;
+    if (currentTranscript === lastSummarizedRef.current) return;
+    
+    lastSummarizedRef.current = currentTranscript;
+
+    const res = await fetch("http://localhost:8787/api/summarize", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        transcript: currentTranscript,
+      }),
+    });
+
+    const data = await res.json();
+    setSummary(data.summary);
+  };
+
+  useEffect(() => {
+    transcriptRef.current = transcript;
+  }, [transcript]);
+
+  useEffect(() => {
+    if (!isRecording) return;
+
+    // Every 15 seconds, send transcript and get summary
+    const intervalId = setInterval(() => {
+      summarizeTranscript(transcriptRef.current);
+    }, 15000);
+
+    return () => clearInterval(intervalId);
+  }, [isRecording]);
+
   return (
     <main className="min-h-screen bg-gray-950 text-white flex items-center justify-center p-6">
       <div className="w-full max-w-2xl rounded-2xl bg-gray-900 p-8 shadow-xl">
@@ -166,6 +207,12 @@ export default function Home() {
             {isRecording && transcript &&(
               <span className="ml-1 animate-pulse text-gray-400">|</span>
             )}
+          </p>
+        </div>
+        <div className="mb-6 rounded-lg bg-gray-800 p-4 min-h-32">
+          <p className="text-sm text-gray-400 mb-2">Live Summary</p>
+          <p className="whitespace-pre-wrap leading-7">
+            {summary || "Summary will appear as the transcript grows..."}
           </p>
         </div>
 

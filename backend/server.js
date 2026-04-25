@@ -2,6 +2,11 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import { WebSocketServer, WebSocket } from "ws";
+import { OpenAI } from "openai";
+
+const openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+});
 
 const app = express();
 app.use(cors());
@@ -11,6 +16,38 @@ const PORT = process.env.PORT || 8787;
 
 const server = app.listen(PORT, () => {
     console.log(`[server] listening on http://localhost:${PORT}`);
+});
+
+app.post("/api/summarize", async (req, res) => {
+    try {
+        const { transcript } = req.body;
+
+        if (!transcript) {
+            return res.status(400).json({ error: "Transcript is required "});
+        }
+
+        const response = await openai.responses.create({
+            model: "gpt-4.1-mini",
+            input: `
+            Summarize this live transcript clearly and concisely.
+
+            Rules:
+            - Use 3-5 bullet points.
+            - Focus on the main ideas.
+            - Do not add information that is not in the transcript.
+
+            Transcript:
+            ${transcript}
+            `,
+        });
+
+        res.json({
+            summary: response.output_text,
+        });
+    } catch (error) {
+        console.error("[summary error]", error);
+        res.status(500).json({ error: "Failed to summarize transcript" });
+    }
 });
 
 const wss = new WebSocketServer({ server });
