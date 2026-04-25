@@ -1,15 +1,18 @@
 # BeyondConversation
 Real-time Speech-to-Text Web App powered by OpenAI
+- Provides Live Transcript and Live Summary
 
 ### Home
-<img width="772" height="565" alt="image" src="https://github.com/user-attachments/assets/71b41102-a628-479c-be98-99b48d17c60f" />
+<img width="727" height="708" alt="image" src="https://github.com/user-attachments/assets/d261b091-7918-49ed-8558-7a5477a38508" />
 
 ### Use Microphone
-<img width="772" height="565" alt="image" src="https://github.com/user-attachments/assets/f4fc56f5-a3fa-4dae-a258-dd0ad0de8e49" />
+<img width="727" height="701" alt="image" src="https://github.com/user-attachments/assets/12e88af3-28b1-4f4d-adaf-468b759c94ac" />
+
+<img width="727" height="937" alt="image" src="https://github.com/user-attachments/assets/da82b494-593d-402e-a91e-454a42aebbae" />
 
 
 ### Capturing YouTube / Tab Audio
-<img width="772" height="647" alt="image" src="https://github.com/user-attachments/assets/b5919797-d84c-4b39-80a6-846a36c93016" />
+
 
 ## Author
 Hae Ji Park (positive235@gmail.com)
