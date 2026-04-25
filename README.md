@@ -23,9 +23,18 @@ Hae Ji Park (positive235@gmail.com)
 ## Tech Stack
 - Frontend: Next.js, React.js, TypeScript, Tailwind CSS
 - Backend: Node.js, Express, WebSocket server
-- AI: OpenAI Realtime API 
+- AI: OpenAI API 
 
 ## How to Run
+- Create .env file in backend/ folder (Don't share this)
+    ```
+    OPENAI_API_KEY=your_openai_api_key_here
+    PORT=8787
+    ```
+- Create .env.local file in frontend/ folder (Don't share this)
+    ```
+    NEXT_PUBLIC_WS_URL=ws://localhost:8787
+    ```
 - backend: 
     ```
     cd backend
@@ -36,5 +45,4 @@ Hae Ji Park (positive235@gmail.com)
     cd frontend
     npm run dev
     ```
-
 - Open: `http://localhost:3000`
